@@ -149,4 +149,4 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
         out
 }
 # debug(gev.ratio.ic.mu)
-gev.ratio.ic.mu(xp=108,t0=t0,t1=t1,y.fit=y.fit,ydat=ydat,to.plot=TRUE,like.num=1000)
+gev.ratio.ic.mu(xp=106,t0=t0,t1=t1,y.fit=y.fit,ydat=ydat,to.plot=TRUE,like.num=1000)

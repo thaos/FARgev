@@ -13,80 +13,9 @@ library(evir)
 library(extRemes)
 require(gWidgetstcltk) #use the gWidgetstcltk package from CRAN
 require(gWidgets) #use the gWidgetstcltk package from CRAN
-
-getP <- function(p2,y.fit,ydat,to.plot=FALSE){
-	xcord=p2[1]
-	ycord=p2[2]
-	x=ydat$year
-	covariate=ydat$mua
-	if (xcord < min(x) | xcord > max(x))
-		stop(" Point outside of data range ")
-	xcloser=which((abs(x-xcord))==min(abs(x-xcord)))
-	xcloser=min(unique(x[xcloser]))
-	ccloser=unique(covariate[which(x==xcloser)])
-	mle <- y.fit$results$par
-	mu=mle[1]+ccloser*mle[2]
-	sigma=mle[3]+ccloser*mle[4]
-	shape=mle[5]
-	1-evir::pgev(ycord,mu=mu,sigma=sigma,xi=shape)
-	1-pevd(ycord,loc=mu,scale=sigma,shape=shape)
-}
-# getP(c(1920,110),y.fit,ydat,to.plot=TRUE)
-
-getFAR <- function(p1,x2,y.fit,ydat){
-	prob1=getP(p1,y.fit,ydat)
-	p2=c(x2,p1[2])
-	prob2=getP(p2,y.fit,ydat)
-	if(prob1==0 & prob2==0)
-		FAR=1
-	else
-	FAR=1-(prob2/prob1)
-	FAR
-}
-# getFAR(c(1920,110),2102,y.fit,ydat)
-
-getFAR.theo=function(xp,t0,t1){
-	p0=1-pgev(xp,mu=mu[t0],sigma=sigma[t0],xi=1)
-	p1=1-pgev(xp,mu=mu[t1],sigma=sigma[t1],xi=1)
-	1-p0/p1
-}
-FARBoot <- function(ydat,indice,p1,x2){
-	data.b=ydat[indice,]
-	y.fit=fevd(y,data.b,location.fun=~mua,scale.fun=~siga)
-	getFAR(p1,x2,y.fit,ydat)
-}
-# repet=4
-# years=1850:2200
-# n=length(unique(years))
-# changement=100
-# t=seq(1,n)
-# mu=(t>changement)*.020*(t-changement)+100
-# sigma=(t>changement)*.001*(t-changement)+1
-# shape=rep(-0.1,n)
-# mu=rep(mu,repet)
-# sigma=rep(sigma,repet)
-# t=rep(t,repet)
-# shape=rep(shape,repet)
-# year=rep(years,repet)
-# covariate=(mapply(qgev,mu=mu,sigma=sigma,xi=shape,MoreArgs=list("p"=0.5)))
-# y=mapply(revd,1,mu,sigma,shape)
-# ydat=data.frame(year,y,rep(1,n),covariate,rep(1,n),covariate,rep(1,n))
-# names(ydat)=c("year","y","mub","mua","sigb","siga","xi")
-# t0=1920
-# t1=2102
-# xp=250
-# boot.res=boot(data=ydat,statistic=FARBoot,R=250,p1=c(t1,xp),x2=t0)
-# r.boot=mean(boot.res$t)
-# alpha=0.05
-# ic.boot=quantile(boot.res$t,p=c(alpha/2,1-alpha/2))
-# boot.ic=c(ic.boot[1],r.boot,ic.boot[2])
-# i0=min(which((abs(ydat$year-t0))==min(abs(ydat$year-t0))))
-# i1=min(which((abs(ydat$year-t1))==min(abs(ydat$year-t1))))
-# r.theo=getFAR.theo(xp=250,t0=i0,t1=i1)
-# 
+source("FAR_GEV_Algo.R")
 
 gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=identity, siglink = identity, show = TRUE,  method="Nelder-Mead",maxit = 10000,to.plot=FALSE, ...){
-	require(evir)
 	if (t0 >= t1)
 		stop("t0 must be inferior to t1")
 	covariate=ydat$mua
@@ -111,7 +40,13 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
 	print(levd(x=xdat,location=mu.v, scale=sig.v, shape=sha.v,type="GEV",npy=1))
 	p0=1-evir::pgev(xp,mu=mu.v[t0],sigma=sig.v[t0],xi=sha.v[t0])
 	p1=1-evir::pgev(xp,mu=mu.v[t1],sigma=sig.v[t1],xi=sha.v[t1])
+	p0=1-pevd(xp,loc=mu.v[t0],scale=sig.v[t0],shape=sha.v[t0])
+	p1=1-pevd(xp,loc=mu.v[t1],scale=sig.v[t1],shape=sha.v[t1])
 	print(p0/p1)
+	if(p0==0 & p1==0)
+		p0p1=1
+	else
+		p0p1=p0/p1
 	init.o=mle
 	ratio2mua=function(mub,sigb,siga,xi,ratio,xp){
 		sc <- siglink(sigmat %*% (c(sigb,siga)))
@@ -134,25 +69,27 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
 		tc=try({
 		mua=ratio2mua(mub,sigb,siga,xi,ratio,xpi)
 		})
-		if(class(tc)=="try-error" | is.na(mua))
+		if(class(tc)=="try-error" | is.na(mua)|is.infinite(mua))
 			return(10^6)
 		mu.v <- mulink(mumat %*% (c(mub,mua)))
-		y <- (xdat - mu.v)/sc
-		y <- 1 + xi * y
-		res=levd(x=xdat,location=mu.v, scale=sc, shape=xi,type="GEV",npy=1)
+		tc2=try({
+			res=levd(x=xdat,location=mu.v, scale=sc, shape=xi,type="GEV",npy=1)
+		})
+		if(class(tc2)=="try-error" )
+			browser()
 		if(is.infinite(res))
 			return(10^6)
 		res
 	}
-	ratio.l <- sort(c(seq(0,2,length.out=like.num),p0/p1))[-1]
-	overallmax <- -gev.lik(init,p0/p1,xp)
+	ratio.l <- sort(c(seq(0,2,length.out=like.num),p0p1))[-1]
+	overallmax <- -gev.lik(init,p0p1,xp)
 	parmax=numeric(length(ratio.l))
 	for(i in 1:length(ratio.l)) {
 		fit <- optim(par=c(init), gev.lik,xpi=xp,ratio=ratio.l[i])
 		parmax[i] <- fit$value
 	}
 	parmax <-  - parmax
-	overallmax <- -gev.lik(init,p0/p1,xp)
+	overallmax <- -gev.lik(init,p0p1,xp)
 	if(abs(max(parmax)-overallmax)>0.0001){
 		print("non equal mle")
 		print(max(parmax))
@@ -171,7 +108,7 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
 		lines(smth$x,smth$y, lty = 2, col = 2)
 	}
 	ci <- smth$x[smth$y > overallmax - aalpha/2]
-	out <- c(min(ci), p0/p1, max(ci))
+	out <- c(min(ci), p0p1, max(ci))
 	names(out) <- c("LowerCI", "Estimate", "UpperCI")
 	print(out)
         out
@@ -199,11 +136,6 @@ iFARplot <- function() {
 	ydat=data.frame(year,y,rep(1,n*repet),covariate,rep(1,n*repet),covariate,rep(1,n*repet))
 	names(ydat)=c("year","y","mub","mua","sigb","siga","xi")
 	df.plot=ydat[order(t),]
-	getFAR.theo=function(xp,t0,t1){
-		p0=1-pgev(xp,mu=mu[t0],sigma=sigma[t0],xi=1)
-		p1=1-pgev(xp,mu=mu[t1],sigma=sigma[t1],xi=1)
-		1-p0/p1
-	}
 	updatePlot <- function(h,...){
 		with(df.plot,plot(year,y))
 		startAdjust[]<<-seq(min(year),svalue(endAdjust),by=1)
@@ -228,7 +160,7 @@ iFARplot <- function() {
 		cat("y fitted")
 		r.ic=gev.ratio.ic.mu(xp=xp,t0=i0,t1=i1,y.fit=y.fit,ydat=ydat)
 		r.ic=1-r.ic
-		r.theo=getFAR.theo(xp=xp,t0=i0,t1=i1)
+		r.theo=getFAR.theo(xp=xp,t0=i0,t1=i1,mu,sigma,shape)
 		updatePlot()
 		svalue(resText) <<- paste("FAR pour t0=",format(t0,digits=2)," et t1=",format(t1,digits=2)," et seuil=",format(xp,digits=2),"\n\n",sep="")
 		insert(resText,paste("theoric FAR:\n", format(r.theo,digits=2),"\n",sep=""))
