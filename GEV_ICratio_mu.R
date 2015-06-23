@@ -1,5 +1,5 @@
-graphics.off()
-rm(list=ls())
+# graphics.off()
+# rm(list=ls())
 
 packages <- c("boot", "quantreg", "evmix", "ismev", "gWidgetstcltk", "gWidgets","evir","extRemes")
 if (length(setdiff(packages, rownames(installed.packages()))) > 0) {

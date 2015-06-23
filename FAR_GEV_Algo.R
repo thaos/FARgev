@@ -62,9 +62,39 @@ getFAR.theo=function(xp,t0,t1,mu,sigma,xi){
 }
 
 FARBoot <- function(ydat,indice,p1,x2){
+	y.fit.dat=fevd(y,ydat,location.fun=~mua,scale.fun=~siga,method="MLE")
+	init=as.list(y.fit.dat$results$par)
 	data.b=ydat[indice,]
-	y.fit=fevd(y,data.b,location.fun=~mua,scale.fun=~siga)
+	#         y.fit=fevd(y,data.b,location.fun=~mua,scale.fun=~siga)
+	y.fit=fevd(y,data.b,location.fun=~mua,scale.fun=~siga,method="MLE",initial=init)
 	getFAR(p1,x2,y.fit,ydat)
+}
+
+FARBoot_explore <- function(ydat,indice,p1,x2){
+	data.b=ydat[indice,]
+	y.fit.dat=fevd(y,ydat,location.fun=~mua,scale.fun=~siga,method="MLE")
+	init=as.list(y.fit.dat$results$par)
+	y.fit=fevd(y,data.b,location.fun=~mua,scale.fun=~siga,method="MLE",initial=init)
+	res=getFAR(p1,x2,y.fit,ydat)
+	i0=min(which((abs(ydat$year-t0))==min(abs(ydat$year-t0))))
+	i1=min(which((abs(ydat$year-t1))==min(abs(ydat$year-t1))))
+	r.theo=getFAR.theo(xp=xp,t0=i0,t1=i1,mu=ydat$mu,sigma=ydat$sigma,xi=ydat$shape)
+	#         with(ydat,plot(year,y,yaxt="n",col="red",ylim=c(100,108)))
+	#         par(new=TRUE)
+	#         with(data.b,hist(year,breaks=250))
+	#         par(new=TRUE)
+	#         with(data.b,plot(year,y,yaxt="n",col="green", ylim=c(100,108)))
+	if (abs(res[1] - (r.theo[1])) > 0.2){
+		print("chelou")
+		print(res)
+		#                 browser()
+	}
+	if (abs(res[1] - (r.theo[1])) <= 0.2) {
+		print("normal")
+		print(res)
+		#                 browser()
+	}
+	res
 }
 
 FARBoot.Spline <- function(ydat,indice,p1,x2){

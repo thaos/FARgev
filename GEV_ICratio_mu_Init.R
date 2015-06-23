@@ -1,3 +1,6 @@
+# graphics.off()
+# rm(list=ls())
+
 packages <- c("boot", "quantreg", "evmix", "ismev", "gWidgetstcltk", "gWidgets","evir","extRemes")
 if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
 	  install.packages(setdiff(packages, rownames(installed.packages())),repos="http://cran.us.r-project.org")
@@ -10,10 +13,11 @@ library(evir)
 library(extRemes)
 require(gWidgetstcltk) #use the gWidgetstcltk package from CRAN
 require(gWidgets) #use the gWidgetstcltk package from CRAN
-source("FAR_GEV_Algo.R",chdir=TRUE)
-source("ImproveRoots.R")
+source("FAR_GEV_Algo.R")
+
 
 gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=identity, siglink = identity, show = TRUE,  method="Nelder-Mead",maxit = 10000,to.plot=FALSE, ...){
+	require(evir)
 	require(foreach)
 	require(doMC)
 	if (t0 >= t1)
@@ -60,6 +64,24 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
 		mua=T0*sig1/(xi*t.delta)
 		mua
 	}
+	findbmax <- function(mub,init,ratio,xpi){
+		calculer_vrais=function(mub,init){
+			init[1]=mub
+			gev.lik(init,ratio,xpi)
+		}
+		vrais = unlist(lapply(mub, calculer_vrais, init=init))
+		vrais = - vrais
+		maxv = which(vrais==max(vrais,na.rm=TRUE))
+		mub[maxv][1]
+	}
+	set_init  <- function(init,ratio,xp){
+		mubplot = c(seq(min(xdat),max(xdat),0.1),init[1])
+		muaplot = ratio2mua(mubplot,init[2],init[3],init[4],0.2,xp=xp)
+		i_na	= which(is.na(muaplot))
+		if (length(i_na)!=0) mubplot=mubplot[-i_na]
+		init[1]=findbmax(mubplot,init,ratio,xp)
+		init
+	}
 	gev.lik <- function(par,ratio,xpi) {
 		xi=par[4]
 		mub=par[1]
@@ -77,39 +99,47 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
 			return(10^6)
 		res
 	}
-	aalpha <- qchisq(ci.p, 1)
-	overallmax <- -gev.lik(init,p0p1,xp) 
-	#         parmax=numeric(length(ratio.l))
-	f_roots=function(ratio){
-		fit=optim(par=c(init), gev.lik,xpi=xp,ratio=ratio)
-		parmax=-fit$value
-		parmax + aalpha/2 - overallmax
+	overallmax <- -gev.lik(init,p0p1,xp)
+	ratio.l <- sort(c(seq(0,1.2,length.out=like.num),p0p1))[-1]
+	i=0
+	profil.optim <- function(ratio,init,xp){
+		print(i  <<- i+1)
+		init=set_init(init,ratio,xp)
+		fit <- optim(par=c(init), gev.lik,xpi=xp,ratio=ratio)
+		fit$value
 	}
-	res=seek_roots(c(-0.5:1.5),fun=f_roots,nbdiv=100,xmax=p0p1)
-	ratio.l=res$x_vrais
-	parmax=res$y_vrais
-	if(abs(max(parmax)-aalpha/2)>0.0001){
+	parmax <- mclapply(ratio.l, profil.optim, init=init,xp=xp) 
+	parmax <- -unlist(parmax)
+	browser()
+	#         parmax=numeric(length(ratio.l))
+	#         registerDoMC(5)
+	#         parmax=foreach(ratio=ratio.l)%dopar%{
+		#         for(i in 1:length(ratio.l)) {
+	#                 fit <- optim(par=c(init), gev.lik,xpi=xp,ratio=ratio)
+		#                 parmax[i] <- fit$value
+	#                 fit$value
+	#         }
+	if(abs(max(parmax)-overallmax)>0.0001){
 		print("non equal mle")
 		print(max(parmax))
-		print(aalpha/2)
+		print(overallmax)
 	}
-	crit <- - qchisq(0.999, 1)/2
+	crit <- overallmax - qchisq(0.999, 1)/2
 	cond <- parmax > crit
 	ratio.l <- ratio.l[cond]
 	parmax <- parmax[cond]
+	aalpha <- qchisq(ci.p, 1)
 	cond <- !is.na(ratio.l) & !is.na(parmax)
-	smth <- spline(ratio.l[cond], parmax[cond], n = 500)
+	smth <- spline(ratio.l[cond], parmax[cond], n = 300)
 	if(to.plot){
 		plot(ratio.l, parmax, type = "l", xlab = "", ylab = "")
 		abline(h = overallmax - aalpha/2, lty = 2, col = 2)
 		lines(smth$x,smth$y, lty = 2, col = 2)
 	}
-	ci <- smth$x[smth$y > 0]
+	ci <- smth$x[smth$y > overallmax - aalpha/2]
 	out <- c(min(ci), p0p1, max(ci),p0,mu.v[t0],sig.v[t0],sha.v[t0],p1,mu.v[t1],sig.v[t1],sha.v[t1])
 	names(out) <- c("LowerCI", "Estimate", "UpperCI","p0","mu0","sc0","sh0","p1","mu1","sc1","sh1")
 	print(out)
-	print(out[1]<out[2])
-	print(out[1]==out[2])
         out
 }
 

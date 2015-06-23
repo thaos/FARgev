@@ -1,3 +1,6 @@
+graphics.off()
+rm(list=ls())
+
 packages <- c("boot", "quantreg", "evmix", "ismev", "gWidgetstcltk", "gWidgets","evir","extRemes")
 if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
 	  install.packages(setdiff(packages, rownames(installed.packages())),repos="http://cran.us.r-project.org")
@@ -78,27 +81,21 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
 		res
 	}
 	aalpha <- qchisq(ci.p, 1)
-	overallmax <- -gev.lik(init,p0p1,xp) 
+	overallmax <- -gev.lik(init,p0p1,xp) - qchisq(ci.p, 1)
 	#         parmax=numeric(length(ratio.l))
 	f_roots=function(ratio){
 		fit=optim(par=c(init), gev.lik,xpi=xp,ratio=ratio)
 		parmax=-fit$value
 		parmax + aalpha/2 - overallmax
 	}
-	res=seek_roots(c(-0.5:1.5),fun=f_roots,nbdiv=100,xmax=p0p1)
+	res=seek_roots(c(0:2),fun=f_roots,nbdiv=100,xmax=p0p1)
 	ratio.l=res$x_vrais
 	parmax=res$y_vrais
 	if(abs(max(parmax)-aalpha/2)>0.0001){
 		print("non equal mle")
-		print(max(parmax))
-		print(aalpha/2)
 	}
-	crit <- - qchisq(0.999, 1)/2
-	cond <- parmax > crit
-	ratio.l <- ratio.l[cond]
-	parmax <- parmax[cond]
 	cond <- !is.na(ratio.l) & !is.na(parmax)
-	smth <- spline(ratio.l[cond], parmax[cond], n = 500)
+	smth <- spline(ratio.l[cond], parmax[cond], n = 300)
 	if(to.plot){
 		plot(ratio.l, parmax, type = "l", xlab = "", ylab = "")
 		abline(h = overallmax - aalpha/2, lty = 2, col = 2)
@@ -108,8 +105,6 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
 	out <- c(min(ci), p0p1, max(ci),p0,mu.v[t0],sig.v[t0],sha.v[t0],p1,mu.v[t1],sig.v[t1],sha.v[t1])
 	names(out) <- c("LowerCI", "Estimate", "UpperCI","p0","mu0","sc0","sh0","p1","mu1","sc1","sh1")
 	print(out)
-	print(out[1]<out[2])
-	print(out[1]==out[2])
         out
 }
 

@@ -19,45 +19,116 @@ borner_sup <- function(vect)
 	vect[3] >= 0 & vect[4] <= 0
 
 
-binf_time <- function(uninterval,fun,nbdiv,xmax=NULL){
+binf_time <- function(uninterval,fun,nbdiv,xmax,fmax,nbiter=0,p.res=NULL){
+	print("**************************************************")
+	print(nbiter)
+	print("**************************************************")
+	max_iter=20
 	z=seq(uninterval[1],uninterval[2],length.out=nbdiv)
-	if (!is.null(xmax)) z=sort(c(z,xmax))
 	pas=(max(z)-min(z))/nbdiv
+	if(!is.null(p.res)){
+		z.p=p.res$x
+		w.p=p.res$likel
+		z=z[!(z%in%z.p)]
+	}
 	w=unlist(mclapply(z,fun))
+	if(nbiter==0){
+		iz=which(z == xmax)
+		print("checking")
+		print(w[iz])
+		w[iz]=fmax
+	}
+	if(!is.null(p.res)){
+		z=c(z,z.p)
+		w=c(w,w.p)
+		w=w[order(z)]
+		z=z[order(z)]
+	}
+	res=list("x"=z,"likel"=w,"pas"=pas)
+	if(nbiter >= max_iter)
+		return(list("x"=z,"likel"=w,"pas"=pas))
+	if(all(w>0)){
+		print("all value are positive")
+		int_r=uninterval[2]-uninterval[1]	
+		extended_interval=c(uninterval[1]-int_r,uninterval[1])
+		res=binf_time(extended_interval, fun, nbdiv=nbdiv, xmax=xmax, nbiter=nbiter+1,p.res=res)
+		return(res)
+	}
+	if(all(w<0)){
+		stop("all values are negative")
+	}
 	intervalles=intervaler(z,w)
 	bornes_inf=Filter(borner_inf,intervalles)
 	if(length(bornes_inf) == 0)
-		return(list("int_inf"=c(NA,NA),"pas"=pas,"x"=z,"likel"=w))
-	xinf=max(unlist(lapply(bornes_inf,"[",1)))
+		return(list("x"=z,"likel"=w))
+	xinf=min(unlist(lapply(bornes_inf,"[",1)))
 	min_binf=which(lapply(bornes_inf,"[",1)==xinf)
 	min_binf=bornes_inf[[min_binf]]
 	ic_inf=min_binf[1]
-	list("int_inf"=min_binf,"pas"=pas,"x"=z,"likel"=w)
+	condition <- (xmax-ic_inf)>20*pas
+	if(!condition){
+		res=binf_time(min_binf[1:2], fun, nbdiv=2*nbdiv, xmax=xmax, nbiter=nbiter+1,p.res=res)
+		return(res)
+	}else{
+		return(list("x"=z,"likel"=w,"pas"=pas))
+	}
 }
-bsup_time <- function(uninterval,fun,nbdiv,xmax=NULL){
+
+bsup_time <- function(uninterval,fun,nbdiv,xmax,fmax,nbiter=0,p.res=NULL){
+	print("**************************************************")
+	print(nbiter)
+	print("**************************************************")
+	max_iter=20
 	z=seq(uninterval[1],uninterval[2],length.out=nbdiv)
-	if (!is.null(xmax)) z=sort(c(z,xmax))
 	pas=(max(z)-min(z))/nbdiv
-	w=unlist(mclapply(z,fun)) 
+	if(!is.null(p.res)){
+		z.p=p.res$x
+		w.p=p.res$likel
+		z=z[!(z%in%z.p)]
+	}
+	w=unlist(mclapply(z,fun))
+	if(nbiter==0){
+		iz=which(z == xmax)
+		print("checking")
+		print(w[iz])
+		w[iz]=fmax
+	}
+	if(!is.null(p.res)){
+		z=c(z,z.p)
+		w=c(w,w.p)
+		w=w[order(z)]
+		z=z[order(z)]
+	}
+	res=list("x"=z,"likel"=w,"pas"=pas)
+	if(nbiter >= max_iter)
+		return(list("x"=z,"likel"=w,"pas"=pas))
+	if(all(w>0)){
+		print("all value are positive")
+		int_r=uninterval[2]-uninterval[1]	
+		extended_interval=c(uninterval[2],int_r+uninterval[2])
+		res=bsup_time(extended_interval, fun, nbdiv=nbdiv, xmax=xmax, nbiter=nbiter+1,p.res=res)
+		return(res)
+	}
+	if(all(w<0)){
+		stop("all values are negative")
+	}
 	intervalles=intervaler(z,w)
 	bornes_sup=Filter(borner_sup,intervalles)
 	if(length(bornes_sup) == 0)
-		return(list("int_sup"=c(NA,NA),"pas"=pas,"x"=z,"likel"=w))
+		return(list("x"=z,"likel"=w))
 	xsup=max(unlist(lapply(bornes_sup,"[",1)))
 	max_bsup=which(lapply(bornes_sup,"[",1)==xsup)
 	max_bsup=bornes_sup[[max_bsup]]
 	ic_sup=max_bsup[2]
-	list("int_sup"=max_bsup,"pas"=pas,"x"=z,"likel"=w)
+	condition <- (ic_sup-xmax)>20*pas
+	if(!condition){
+		res=bsup_time(max_bsup[1:2], fun, nbdiv=2*nbdiv, xmax=xmax, nbiter=nbiter+1,p.res=res)
+		return(res)
+	}else{
+		return(list("x"=z,"likel"=w,"pas"=pas))
+	}
 }
-first_time <- function(uninterval,fun,nbdiv,xmax){
-	binft=binf_time(uninterval,fun,nbdiv,xmax=xmax)
-	bsupt=bsup_time(uninterval,fun,nbdiv,xmax=xmax)
-	x=c(binft$x,bsupt$x)
-	x=list("x"=x)
-	likel=c(binft$likel,bsupt$likel)
-	likel=list("likel"=likel)
-	c(binft[1:2],bsupt[1:2],x,likel)
-}
+
 
 
 get_ic <- function(int_inf,int_sup){

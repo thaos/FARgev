@@ -1,6 +1,3 @@
-graphics.off()
-rm(list=ls())
-
 packages <- c("boot", "quantreg", "evmix", "ismev", "gWidgetstcltk", "gWidgets","evir","extRemes")
 if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
 	  install.packages(setdiff(packages, rownames(installed.packages())),repos="http://cran.us.r-project.org")
@@ -14,6 +11,9 @@ library(extRemes)
 require(gWidgetstcltk) #use the gWidgetstcltk package from CRAN
 require(gWidgets) #use the gWidgetstcltk package from CRAN
 source("FAR_GEV_Algo.R")
+source("GEV_ICratio_mu.R")
+source("GEV_ICratio_mu_Init_IR.R")
+
 
 iFARplot <- function() {
 	thisEnv <- environment()
@@ -25,15 +25,16 @@ iFARplot <- function() {
 	t=seq(1,n)
 	mu=(t>changement)*.020*(t-changement)+100
 	sigma=(t>changement)*.001*(t-changement)+1
-	shape=rep(-0.1,n)
+	shape=rep(-0.10,n)
 	mu=rep(mu,repet)
 	sigma=rep(sigma,repet)
 	t=rep(t,repet)
 	shape=rep(shape,repet)
 	year=rep(years,repet)
-	covariate=(mapply(qgev,mu=mu,sigma=sigma,xi=shape,MoreArgs=list("p"=0.5)))
+	covariate=(mapply(qevd,loc=mu,scale=sigma,shape=shape,MoreArgs=list("p"=0.5,"type"="GEV")))
 	#On ajoute un bruit insignifiant pour éviter que la covariable soit exactementy identique sur la première période, sans quoi, ce la fait bugguer le profile de vraisemblance: division par zéro pour une différence en covariable nulle.
 	covariate=covariate+rnorm(n*repet,sd=0.000001)
+	covariate=scale(covariate,scale=FALSE)
 	y=mapply(revd,1,mu,sigma,shape)
 	ydat=data.frame(year,y,mu,sigma,shape,rep(1,n*repet),covariate,rep(1,n*repet),covariate,rep(1,n*repet))
 	names(ydat)=c("year","y","mu","sigma","shape","mub","mua","sigb","siga","xi")
@@ -113,7 +114,7 @@ iFARplot <- function() {
 		i1=min(which((abs(df.plot$year-t1))==min(abs(df.plot$year-t1))))
 		print(paste(t0,i0))
 		print(paste(t1,i1))
-		y.fit=fevd(y,ydat,location.fun=~mua,scale.fun=~siga)
+		y.fit=fevd(y,df.plot,location.fun=~mua,scale.fun=~siga)
 		cat("y fitted")
 		r.ic=gev.ratio.ic.mu(xp=xp,t0=i0,t1=i1,y.fit=y.fit,ydat=df.plot)
 		r.param=r.ic[4:length(r.ic)]
@@ -141,14 +142,15 @@ iFARplot <- function() {
 		hist(boot.res$t[,2],main="BootSample : p0",xlab="p0",breaks="FD",freq=FALSE)
 		abline(v=p0.theo,col="red")
 		abline(v=r.boot[2],col="green")
-		hist(boot.res$t[,6],main="BootSample : p1",xlab="p1",breaks="FD",freq=FALSE)
+		hist(boot.res$t[,6],main="BootSample : p1",xlab="p1")
+		#                 hist(boot.res$t[,6],main="BootSample : p1",xlab="p1",breaks="FD",freq=FALSE)
 		abline(v=p1.theo,col="red")
 		abline(v=r.boot[6],col="green")
 		dev.set(dev.prev()) 
 		alpha=0.05
 		ic.boot=apply(boot.res$t,2,quantile,p=c(alpha/2,1-alpha/2))
-		i0=min(which((abs(ydat$year-t0))==min(abs(ydat$year-t0))))
-		i1=min(which((abs(ydat$year-t1))==min(abs(ydat$year-t1))))
+		i0=min(which((abs(df.plot$year-t0))==min(abs(df.plot$year-t0))))
+		i1=min(which((abs(df.plot$year-t1))==min(abs(df.plot$year-t1))))
 		r.theo=getFAR.theo(xp=xp,t0=i0,t1=i1,mu,sigma,shape)
 		r.theo=c(r.theo,attr(r.theo,"p0"),attr(r.theo,"p1"))
 		boot.ic=as.data.frame(t(rbind(r.boot,ic.boot)[,c(1,2,6)]))
@@ -184,4 +186,3 @@ iFARplot <- function() {
 	gbutton("ComputeFAR",container=tmp,handler=ComputeFAR)
 	updatePlot()
 }
-iFARplot()

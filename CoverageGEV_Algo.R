@@ -46,10 +46,42 @@ Boot2Execute <- function(env,to.plot=FALSE){
 	res
 }
 
+Boot2Execute.Spline <- function(env,to.plot=FALSE){
+	#         print(environment())
+	#         print(ls(,envir=parent.env(environment())))
+	list2env(as.list(env),envir=environment())
+	require(quantreg)
+	covariate=with(ydat,predict(rq( y~ bs(year, df=5,degree=5), tau=0.5)))
+	y=mapply(revd,1,mu,sigma,shape)
+	ydat=data.frame(year,y,rep(1,n*repet),covariate,rep(1,n*repet),covariate,rep(1,n*repet))
+	names(ydat)=c("year","y","mub","mua","sigb","siga","xi")
+	boot.res=boot(data=ydat,statistic=FARBoot.Spline,R=250,p1=c(t1,xp),x2=t0)
+	theta.boot=colMeans(boot.res$t)
+	r.boot=mean(boot.res$t)
+	r.boot=theta.boot[1]
+	if(is.na(r.boot))
+		browser()
+	alpha=0.05
+	ic.boot=quantile(boot.res$t,p=c(alpha/2,1-alpha/2))
+	ic.boot=apply(boot.res$t,2,quantile,p=c(alpha/2,1-alpha/2))
+	boot.ic=c(ic.boot[1,1],r.boot,ic.boot[2,1])
+	i0=min(which((abs(ydat$year-t0))==min(abs(ydat$year-t0))))
+	i1=min(which((abs(ydat$year-t1))==min(abs(ydat$year-t1))))
+	r.theo=getFAR.theo(xp=xp,t0=i0,t1=i1,mu,sigma,shape)
+	names(boot.ic) <- c("LowerCI", "Estimate", "UpperCI")
+	res=c(r.theo,boot.ic)
+	names(res)[1]="Theoric"
+	res
+}
+
 Prof2Execute <- function(env,to.plot=FALSE){
 	list2env(as.list(env),envir=environment())
 	y=mapply(revd,1,mu,sigma,shape)
+	covariate=covariate-mean(covariate)
 	ydat=data.frame(year,y,rep(1,n*repet),covariate,rep(1,n*repet),covariate,rep(1,n*repet))
+	#         ydat=data.frame(year,y,rep(1,n*repet),mu,rep(1,n*repet),sigma,rep(1,n*repet))
+	#         with(ydat,plot(year,y))
+	#         with(ydat,lines(year,mu,col="red"))
 	names(ydat)=c("year","y","mub","mua","sigb","siga","xi")
 	y.fit=fevd(y,ydat,location.fun=~mua,scale.fun=~siga)
 	i0=min(which((abs(ydat$year-t0))==min(abs(ydat$year-t0))))
@@ -65,5 +97,6 @@ Prof2Execute <- function(env,to.plot=FALSE){
 	# print(r.ic)
 	res=c(r.theo,r.ic)
 	names(res)[1]="Theoric"
+	print(res)
 	res
 }

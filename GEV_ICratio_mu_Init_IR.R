@@ -1,3 +1,6 @@
+# graphics.off()
+# rm(list=ls())
+
 packages <- c("boot", "quantreg", "evmix", "ismev", "gWidgetstcltk", "gWidgets","evir","extRemes")
 if (length(setdiff(packages, rownames(installed.packages()))) > 0) {
 	  install.packages(setdiff(packages, rownames(installed.packages())),repos="http://cran.us.r-project.org")
@@ -10,10 +13,12 @@ library(evir)
 library(extRemes)
 require(gWidgetstcltk) #use the gWidgetstcltk package from CRAN
 require(gWidgets) #use the gWidgetstcltk package from CRAN
-source("FAR_GEV_Algo.R",chdir=TRUE)
+source("FAR_GEV_Algo.R")
 source("ImproveRoots.R")
 
+
 gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=identity, siglink = identity, show = TRUE,  method="Nelder-Mead",maxit = 10000,to.plot=FALSE, ...){
+	require(evir)
 	require(foreach)
 	require(doMC)
 	if (t0 >= t1)
@@ -47,7 +52,7 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
 		p0p1=1
 	else
 		p0p1=p0/p1
-	init.o=mle
+	# Erreur numérique  la mua retourné par la fonction est légèrement différent.
 	ratio2mua=function(mub,sigb,siga,xi,ratio,xp){
 		sc <- siglink(sigmat %*% (c(sigb,siga)))
 		sig0=sc[t0]
@@ -60,6 +65,29 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
 		mua=T0*sig1/(xi*t.delta)
 		mua
 	}
+	findbmax <- function(mub,init,ratio,xpi){
+		calculer_vrais=function(mub,init){
+			init[1]=mub
+			gev.lik(init,ratio,xpi)
+		}
+		vrais = unlist(lapply(mub, calculer_vrais, init=init))
+		vrais = - vrais
+		maxv = which(vrais==max(vrais,na.rm=TRUE))
+		mub[maxv][1]
+	}
+	set_init  <- function(init,ratio,xp){
+		mubplot = c(seq(min(xdat),max(xdat),0.1),init[1])
+		muaplot = ratio2mua(mubplot,init[2],init[3],init[4],ratio,xp=xp)
+		i_na	= which(is.na(muaplot))
+		if (length(i_na)!=0) mubplot=mubplot[-i_na]
+		if( length(mubplot)!=0)
+			init[1]=findbmax(mubplot,init,ratio,xp)
+		init
+	}
+	print("Mince Alors !")
+	mua=ratio2mua(init[1],init[2],init[3],init[4],p0p1,xp)
+	print(mua-mle[2])
+	#         debug(set_init)
 	gev.lik <- function(par,ratio,xpi) {
 		xi=par[4]
 		mub=par[1]
@@ -77,17 +105,24 @@ gev.ratio.ic.mu=function(xp,t0,t1,y.fit,ydat,ci.p=0.95,like.num = 1000 ,mulink=i
 			return(10^6)
 		res
 	}
+	overallmax <- -gev.lik(init,p0p1,xp)
 	aalpha <- qchisq(ci.p, 1)
-	overallmax <- -gev.lik(init,p0p1,xp) 
-	#         parmax=numeric(length(ratio.l))
+	ratio.l <- sort(c(seq(0,1.2,length.out=like.num),p0p1))[-1]
+	#         i=0
+	profil.optim <- function(ratio,init,xp){
+		#                 print(i  <<- i+1)
+		init=set_init(init,ratio,xp)
+		fit <- optim(par=c(init), gev.lik,xpi=xp,ratio=ratio)
+		fit$value
+	}
 	f_roots=function(ratio){
-		fit=optim(par=c(init), gev.lik,xpi=xp,ratio=ratio)
-		parmax=-fit$value
+		parmax = -profil.optim(ratio=ratio,init=init,xp=xp)
 		parmax + aalpha/2 - overallmax
 	}
-	res=seek_roots(c(-0.5:1.5),fun=f_roots,nbdiv=100,xmax=p0p1)
-	ratio.l=res$x_vrais
-	parmax=res$y_vrais
+	sr=seek_roots(c(-0.5,1.5),fun=f_roots,nbdiv=100,xmax=p0p1)
+	ratio.l=sr$x_vrais
+	parmax=sr$y_vrais
+	#         browser()
 	if(abs(max(parmax)-aalpha/2)>0.0001){
 		print("non equal mle")
 		print(max(parmax))
