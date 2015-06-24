@@ -105,3 +105,94 @@ FARBoot.Spline <- function(ydat,indice,p1,x2){
 	y.fit=fevd(y,data.b,location.fun=~mua,scale.fun=~siga)
 	getFAR(p1,x2,y.fit,ydat)
 }
+
+function2draw <- function(condition){
+	function(ydat,nrepet,year){
+		cond.e=eval(condition)
+		sb=which(cond.e)
+		sample(sb,size=nrepet,replace=TRUE)
+	}
+}
+
+cond=quote(ydat$year==year)
+draw_same_year <- function2draw(cond)
+rbind_list <- function(liste){
+	if(is.data.frame(liste)|length(liste)==1)
+	   return(liste)
+	if(length(liste)>1){
+		liste[[2]]= rbind(liste[[1]],liste[[2]])
+		return(rbind_list(liste[-1]))
+	}
+}
+		
+
+FARBoot_sy <- function(ydat,indice,p1,x2){
+	y.fit.dat=fevd(y,ydat,location.fun=~mua,scale.fun=~siga,method="MLE")
+	init=as.list(y.fit.dat$results$par)
+	years=as.data.frame(table(ydat$year))
+	years$Var1=as.numeric(paste(years$Var1))
+	#         years=aggregate(y~year,data=ydat,FUN=length)
+	names(years)=c("year","eff")
+	indice=c(with(years,mapply(draw_same_year,nrepet=eff,year=year,MoreArgs=list(ydat=ydat),SIMPLIFY=TRUE)))
+	data.b=ydat[indice,]
+	y.fit=fevd(y,data.b,location.fun=~mua,scale.fun=~siga,method="MLE",initial=init)
+	getFAR(p1,x2,y.fit,ydat)
+}
+
+tol=5
+cond2=function(tol){
+	substitute(ydat$year <= year+tol &ydat$year >= year-tol,list(tol=tol))
+}
+draw_around_year <- function2draw(cond2(5))
+FARBoot_ay <- function(ydat,indice,p1,x2){
+	y.fit.dat=fevd(y,ydat,location.fun=~mua,scale.fun=~siga,method="MLE")
+	init=as.list(y.fit.dat$results$par)
+	years=aggregate(y~year,data=ydat,FUN=length)
+	names(years)=c("year","eff")
+	indice=c(with(years,mapply(draw_around_year,nrepet=eff,year=year,MoreArgs=list(ydat=ydat),SIMPLIFY=TRUE)))
+	data.b=ydat[indice,]
+	years.v=c(with(years,mapply(rep,x=year,times=eff)))
+	data.b$year=years.v
+	y.fit=fevd(y,data.b,location.fun=~mua,scale.fun=~siga,method="MLE",initial=init)
+	getFAR(p1,x2,y.fit,ydat)
+}
+
+tol=0.1
+year2mu <- function(year,ydat){
+	i=which(year==ydat$year)
+	ydat[i[1],"mua"]
+}
+cond3 <- function(tol){
+	substitute(ydat$mua <= year2mu(year,ydat)+tol &ydat$mua >= year2mu(year,ydat)-tol,list(tol=tol))
+}
+draw_around_mua <- function2draw(cond3(0.1))
+FARBoot_ax <- function(ydat,indice,p1,x2){
+	y.fit.dat=fevd(y,ydat,location.fun=~mua,scale.fun=~siga,method="MLE")
+	init=as.list(y.fit.dat$results$par)
+	years=aggregate(y~year,data=ydat,FUN=length)
+	names(years)=c("year","eff")
+	indice=c(with(years,mapply(draw_around_mua,nrepet=eff,year=year,MoreArgs=list(ydat=ydat),SIMPLIFY=TRUE)))
+	data.b=ydat[indice,]
+	years.v=c(with(years,mapply(rep,x=year,times=eff)))
+	data.b$year=years.v
+	y.fit=fevd(y,data.b,location.fun=~mua,scale.fun=~siga,method="MLE",initial=init)
+	getFAR(p1,x2,y.fit,ydat)
+}
+
+FARBoot_gen  <- function(to_draw){
+	function(ydat,indice,p1,x2){
+		y.fit.dat=fevd(y,ydat,location.fun=~mua,scale.fun=~siga,method="MLE")
+		init=as.list(y.fit.dat$results$par)
+		years=aggregate(y~year,data=ydat,FUN=length)
+		names(years)=c("year","eff")
+		indice=c(with(years,mapply(to_draw,nrepet=eff,year=year,MoreArgs=list(ydat=ydat),SIMPLIFY=TRUE)))
+		data.b=ydat[indice,]
+		years.v=c(with(years,mapply(rep,x=year,times=eff)))
+		data.b$year=years.v
+		y.fit=fevd(y,data.b,location.fun=~mua,scale.fun=~siga,method="MLE",initial=init)
+		getFAR(p1,x2,y.fit,ydat)
+	}
+}
+FARBoot_ax2=FARBoot_gen(draw_around_mua) 
+FARBoot_sy2=FARBoot_gen(draw_same_year) 
+FARBoot_ay2=FARBoot_gen(draw_around_year) 
